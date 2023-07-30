@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IndexedDB Learning</title>
+    <style>
+        table{
+            max-width: 1000px;
+            margin: 20px auto;
+            border: 2px solid black;
+            border-collapse: collapse;
+            text-transform: capitalize;
+        }
+        th,td{
+            padding: 10px;
+            text-align: center;
+        }
+        .btn{
+            padding: 10px;
+            margin: 10px;
+            border: none;
+            outline: none;
+            border-radius: 4px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 20px;
+        }
+        .edit{
+            background-color: green;
+        }
+        .delete{
+            background-color: red;
+        }
+        #update_form,#add_form{
+            display: none;
+        }
+        #update_form.active,#add_form.active{
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <form id="add_form" class="active">
+        <h1>add form</h1>
+        <input type="text" name="fname" placeholder="name">
+        <input type="number" name="age" placeholder="age">
+        <input type="email" name="email" placeholder="email">
+        <input type="submit" value="add">
+    </form>
+    <form id="update_form">
+        <h1>update form</h1>
+        <input type="hidden" name="id">
+        <input type="text" name="fname" placeholder="name">
+        <input type="number" name="age" placeholder="age">
+        <input type="email" name="email" placeholder="email">
+        <input type="submit" value="update">
+    </form>
+    <table>
+        <thead>
+            <tr>
+                <th>id</th>
+                <th>name</th>
+                <th>age</th>
+                <th>email</th>
+                <th>edit</th>
+                <th>delete</th>
+            </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+    </table>
+    <script>
+        let tbody = document.getElementById("tbody");
+        let add_form = document.getElementById("add_form");
+        let update_form = document.getElementById("update_form");
+
+        const validateForm = (fname,age,email) => {
+            if(fname.length <= 0){
+                alert("name is invalid"); return false;
+            }else if(isNaN(age) || age <= 0){
+                alert("age is invalid"); return false;
+            }else if(email.length <= 0){
+                alert("email is invalid"); return false;
+            }
+            return true;
+        }
+
+        //check browser support
+        window.indexedDB = window.indexedDB || window.mozIndexedDB || window.webkitIndexedDB || window.msIndexedDB;
+        window.IDBTransaction = window.IDBTransaction || window.webkitIDBTransaction || window.msIDBTransaction;
+        window.IDBKeyRange = window.IDBKeyRange || window.webkitIDBKeyRange || window.msIDBKeyRange;
+
+        let db;
+        const loadTable = () => {
+            let objectStore;
+            tbody.innerHTML = "";
+            let request = window.indexedDB.open("newDatabase", 1);
+            request.onerror = (e) => alert("IndexedDB opening problem");
+            const readAll = () => {
+                objectStore = db.transaction("employee").objectStore("employee");
+                objectStore.openCursor().onsuccess = (e) => {
+                    let cursor = e.target.result;
+                    if(cursor){
+                        tbody.insertAdjacentHTML("beforeend",
+                        `<tr>
+                            <td>${cursor.key}</td>
+                            <td>${cursor.value.fname}</td>
+                            <td>${cursor.value.age}</td>
+                            <td>${cursor.value.email}</td>
+                            <td><button onclick='editRecoard(${cursor.key})' type='button' class='btn edit'>edit</button></td>
+                            <td><button onclick='deleteRecoard(${cursor.key})' type='button' class='btn delete'>delete</button></td>
+                        </tr>`);
+                        cursor.continue();
+                    }else{
+                        tbody.insertAdjacentHTML("beforeend","<tr><td colspan='6'>No more entries!</td></tr>");
+                    }
+                };
+            }
+            request.onsuccess = (e) => {
+                db = request.result;
+                readAll();
+            };
+            request.onupgradeneeded = (e) => {
+                db = e.target.result;
+                objectStore = db.createObjectStore("employee", {keyPath: "id"});
+            }
+        }
+
+        if(!window.indexedDB || !window.IDBTransaction || !window.IDBKeyRange){
+            alert("Your browser doesn't support a stable version of IndexedDB.");
+        }else{
+            loadTable();
+        }
+        
+
+        let readSingle = (sid) => {
+            let request = db.transaction(["employee"]).objectStore("employee").get(sid);
+            request.onerror = (e) => alert("cant get single data");
+            request.onsuccess = (e) => {
+               if(request.result){
+                   let {id,fname,age,email} = request.result;
+                   update_form.id.value = id;
+                   update_form.fname.value = fname;
+                   update_form.age.value = age;
+                   update_form.email.value = email;
+               }else{
+                  alert("single data getting failed.");
+               }
+            };
+        }
+
+        let addData = (obj) => {
+            let request = db.transaction(["employee"], "readwrite").objectStore("employee").add(obj);
+            request.onsuccess = () => loadTable();
+            request.onerror = () => alert("data not added. something is wrong.");
+        }
+
+        let updateData = (obj) => {
+            let transaction = db.transaction(["employee"],"readwrite");
+            let objectStore = transaction.objectStore("employee");
+            let request = objectStore.get(Number(obj.id));
+            request.onerror = () => alert("single data fetch problem.");
+            request.onsuccess = (e) => {
+                let existingData = e.target.result;
+                if(existingData){
+                    existingData.fname = obj.fname;
+                    existingData.age = obj.age;
+                    existingData.email = obj.email;
+                    let updateRequest = objectStore.put(existingData);
+                    updateRequest.onerror = () => alert("update request failed.");
+                    updateRequest.onsuccess = () => loadTable();
+                }else{
+                    alert("existing data getting problem.");
+                }
+            }
+        }
+
+        let deleteRecoard = (id) => {
+            let request = db.transaction(["employee"], "readwrite").objectStore("employee").delete(id);
+            request.onsuccess = () => loadTable();
+        }
+
+        //get random id
+        const randomId = (min,max) => {
+            min = Math.ceil(min);
+            max = Math.floor(max);
+            return Math.floor(Math.random() * (max - min) + min);
+        }
+
+        //add data in indexedDB
+        add_form.onsubmit = (e) => {
+            e.preventDefault();
+            let {fname,age,email} = e.target;
+            fname = fname.value.trim();
+            age = age.value.trim();
+            email = email.value.trim();
+            if(validateForm(fname,age,email)){
+                addData({id: randomId(1000,9999),fname,age,email});
+                e.target.reset();
+            }
+        }
+
+        //show edit form
+        let editRecoard = (id) => {
+            add_form.classList.remove("active");
+            update_form.classList.add("active");
+            readSingle(id);
+        }
+
+        // update data in indexedDB
+        update_form.onsubmit = (e) => {
+            e.preventDefault();
+            let {id,fname,age,email} = e.target;
+            fname = fname.value.trim();
+            age = age.value.trim();
+            email = email.value.trim();
+            if(validateForm(fname,age,email)){
+                updateData({id:id.value,fname,age,email});
+                e.target.reset();
+                add_form.classList.add("active");
+                update_form.classList.remove("active");
+            }
+        }
+    </script>
+</body>
+</html>

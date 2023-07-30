@@ -1,0 +1,677 @@
+learning pwa
+1) create index.html
+2) add manifest.json file into index.html
+3) add css and app.js file into index.html
+4) create sw.js file
+4) add service worker registration code in app.js file
+5) add routes/assets in cache when install event fire in sw.js file
+6) show data from cache when fetch event fire.
+7) now everything is working but the problem is when we want to show updated data to the user,
+browser is showing old data from cache. so now we need to use cache versioning.
+we need to upgrade cache version from v1 to v2. but still browser is showing data from old cache version.
+so we also need to delete old version of cache v1.
+
+8) we need to use activate event for deleting our old cache versions.
+activate event is part of service worker lifecycle.
+we have used activate event but still old cache is not deleted. because activate event is not triggered yet.
+activate event will trigger when user close that particular tab and open new tab and visit that route again.
+now see old cache is deleted and new changes are showing from new cache version v2.
+as a developer we can also use skipwaiting or update on reload option instead of opening new tab.
+
+9) now we want to do dynamic caching. means when user visit any new route which is not pre-cached we want to add them in cache.
+so we need to write that code in fetch event. if requested data is available in cache then it will return that data but if not
+available then we do fetch() request and fetch that data then add them in cache then return fetch() response.
+
+10) when user is offline and try to visit any .html page which is not pre-cached then we need to show fallback.html (already pre-cached)
+page instead of that internet connection error.
+inside fetch event, .catch() method will be trigger if user is offline and try to visit any non pre-cached route.
+
+11) push notification.
+its require firebase setup and i am not able to work with firebase because i need npm, react etc..
+so i will see this functionality when i will work with react js.
+
+12) background sync.
+when user is submiting form or uploading something and suddenly internet disconnect then we need to sync that data
+when user get back online. i will see this topic later.
+
+13) how to notify users if new version of pwa is available ?
+implement a mechanism to check for updates in the service worker and then display a user-friendly message to inform users
+about the new version. When users interact with this message, they can choose to reload the page or take other actions to
+get the latest version. Here's how you can do it:
+
+sw.js file code below
+
+// Function to show a notification when a new version is available
+function showUpdateNotification() {
+  self.registration.showNotification('New Version Available', {
+    body: 'A new version of the app is available. Click to update.',
+    icon: '/path/to/notification-icon.png', // Replace with the URL of your notification icon
+    tag: 'update-notification', // Use a unique tag to identify this notification
+    requireInteraction: true, // Ensure the notification stays until the user interacts with it
+  });
+}
+
+// Listen for the 'message' event from the client (your frontend code)
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'checkForUpdate') {
+    // Send a message back to the client with the status of update check
+    // This will trigger the frontend to show the update notification
+    event.source.postMessage({ type: 'updateStatus', updateAvailable: true });
+  }
+});
+
+// Listen for the 'notificationclick' event to handle user interaction with the notification
+self.addEventListener('notificationclick', event => {
+  if (event.notification.tag === 'update-notification') {
+    event.notification.close(); // Close the notification
+
+    // You can customize the behavior here based on user interactions
+    // For example, you can reload the page to get the latest version
+    // or navigate to a specific update page.
+    // For demonstration purposes, we'll simply reload the page.
+    self.clients.matchAll().then(clients => {
+      clients.forEach(client => client.postMessage({ type: 'reloadPage' }));
+    });
+  }
+});
+
+app.js file code below
+
+// Send a message to the service worker to check for updates
+if ('serviceWorker' in navigator && 'MessageChannel' in window) {
+  const messageChannel = new MessageChannel();
+  messageChannel.port1.onmessage = event => {
+    if (event.data.type === 'updateStatus' && event.data.updateAvailable) {
+      // Show the update notification to the user
+      showUpdateNotification();
+    }
+  };
+
+  navigator.serviceWorker.controller.postMessage({ type: 'checkForUpdate' }, [messageChannel.port2]);
+}
+
+// Function to show the update notification
+function showUpdateNotification() {
+  // Implement the UI to show the notification to the user
+  // You can create a custom notification banner or message
+  // or use a library to handle notifications.
+  // For simplicity, we'll use the browser's default notification API.
+  Notification.requestPermission().then(permission => {
+    if (permission === 'granted') {
+      new Notification('New Version Available', {
+        body: 'A new version of the app is available. Click to update.',
+        icon: '/path/to/notification-icon.png', // Replace with the URL of your notification icon
+      });
+    }
+  });
+}
+
+// Listen for messages from the service worker
+navigator.serviceWorker.addEventListener('message', event => {
+  if (event.data && event.data.type === 'reloadPage') {
+    // Reload the page to get the latest version
+    window.location.reload(true);
+  }
+});
+
+In this example, when the service worker detects that a new version of your PWA is available, 
+it sends a message to the frontend code to trigger the update notification. 
+The frontend then uses the browser's Notification API to show the notification to the user. 
+When the user interacts with the notification, the service worker handles the notificationclick event and 
+performs the desired action, such as reloading the page to get the latest version.
+
+14) Geolocation api.
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Geolocation API Example</title>
+</head>
+<body>
+  <h1>Geolocation API Example</h1>
+  <button id="getLocationBtn">Get My Location</button>
+  <p id="locationInfo">Location will be displayed here</p>
+
+  <script>
+    // Check if the Geolocation API is supported
+    if ('geolocation' in navigator) {
+      const getLocationBtn = document.getElementById('getLocationBtn');
+      const locationInfo = document.getElementById('locationInfo');
+
+      // Function to handle successful retrieval of location
+      function showPosition(position) {
+        const latitude = position.coords.latitude;
+        const longitude = position.coords.longitude;
+        locationInfo.textContent = `Latitude: ${latitude}, Longitude: ${longitude}`;
+      }
+
+      // Function to handle errors
+      function showError(error) {
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            locationInfo.textContent = 'User denied the request for Geolocation.';
+            break;
+          case error.POSITION_UNAVAILABLE:
+            locationInfo.textContent = 'Location information is unavailable.';
+            break;
+          case error.TIMEOUT:
+            locationInfo.textContent = 'The request to get user location timed out.';
+            break;
+          case error.UNKNOWN_ERROR:
+            locationInfo.textContent = 'An unknown error occurred.';
+            break;
+        }
+      }
+
+      // Attach click event to the "Get My Location" button
+      getLocationBtn.addEventListener('click', () => {
+        // Request user's location
+        navigator.geolocation.getCurrentPosition(showPosition, showError);
+      });
+    } else {
+      locationInfo.textContent = 'Geolocation is not supported in this browser.';
+    }
+  </script>
+</body>
+</html>
+
+15) how to use Media Capture api and access camera, microphone to capture photos, videos, and audio.
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Media Capture API Example</title>
+</head>
+<body>
+  <h1>Media Capture API Example</h1>
+  <video id="cameraPreview" width="640" height="480" autoplay></video>
+  <button id="captureBtn">Capture Photo</button>
+  <canvas id="photoCanvas" width="640" height="480"></canvas>
+
+  <script>
+    // Check if the Media Capture API is supported
+    if ('mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices) {
+      const cameraPreview = document.getElementById('cameraPreview');
+      const captureBtn = document.getElementById('captureBtn');
+      const photoCanvas = document.getElementById('photoCanvas');
+      const ctx = photoCanvas.getContext('2d');
+
+      // Function to handle successful media capture
+      function handleSuccess(stream) {
+        // Display camera preview
+        cameraPreview.srcObject = stream;
+
+        // Attach click event to the "Capture Photo" button
+        captureBtn.addEventListener('click', () => {
+          // Draw the current video frame on the canvas
+          ctx.drawImage(cameraPreview, 0, 0, photoCanvas.width, photoCanvas.height);
+
+          // Stop the media stream to release the camera resources
+          stream.getTracks().forEach(track => track.stop());
+        });
+      }
+
+      // Function to handle errors
+      function handleError(error) {
+        console.error('Error accessing media devices:', error);
+      }
+
+      // Request access to camera and microphone
+      navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+        .then(handleSuccess)
+        .catch(handleError);
+    } else {
+      console.log('Media Capture API is not supported in this browser.');
+    }
+  </script>
+</body>
+</html>
+
+16) how to access Device Orientation and Motion ?
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Device Orientation API Example</title>
+</head>
+<body>
+  <h1>Device Orientation API Example</h1>
+  <p>Alpha: <span id="alphaValue">-</span></p>
+  <p>Beta: <span id="betaValue">-</span></p>
+  <p>Gamma: <span id="gammaValue">-</span></p>
+
+  <script>
+    // Check if the Device Orientation API is supported
+    if ('DeviceOrientationEvent' in window) {
+      // Function to handle device orientation data
+      function handleOrientation(event) {
+        // Access orientation data from the event object
+        const alpha = event.alpha; // Rotation around the z-axis (0 to 360 degrees)
+        const beta = event.beta;   // Rotation around the x-axis (-180 to 180 degrees)
+        const gamma = event.gamma; // Rotation around the y-axis (-90 to 90 degrees)
+
+        // Display orientation data on the page
+        document.getElementById('alphaValue').textContent = alpha.toFixed(2);
+        document.getElementById('betaValue').textContent = beta.toFixed(2);
+        document.getElementById('gammaValue').textContent = gamma.toFixed(2);
+      }
+
+      // Register event listener for the 'deviceorientation' event
+      window.addEventListener('deviceorientation', handleOrientation);
+    } else {
+      console.log('Device Orientation API is not supported in this browser.');
+    }
+  </script>
+</body>
+</html>
+
+<!-- Add this script after the previous script -->
+<script>
+  // Check if the Device Motion API is supported
+  if ('DeviceMotionEvent' in window) {
+    // Function to handle device motion data
+    function handleMotion(event) {
+      // Access motion data from the event object
+      const accelerationX = event.acceleration.x; // Acceleration in the x-axis (m/s^2)
+      const accelerationY = event.acceleration.y; // Acceleration in the y-axis (m/s^2)
+      const accelerationZ = event.acceleration.z; // Acceleration in the z-axis (m/s^2)
+
+      const rotationRateAlpha = event.rotationRate.alpha; // Rotation rate around the z-axis (deg/s)
+      const rotationRateBeta = event.rotationRate.beta;   // Rotation rate around the x-axis (deg/s)
+      const rotationRateGamma = event.rotationRate.gamma; // Rotation rate around the y-axis (deg/s)
+
+      // Display motion data on the page
+      // ...
+    }
+
+    // Register event listener for the 'devicemotion' event
+    window.addEventListener('devicemotion', handleMotion);
+  } else {
+    console.log('Device Motion API is not supported in this browser.');
+  }
+</script>
+
+17) how to access Web Bluetooth api ?
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Web Bluetooth API Example</title>
+</head>
+<body>
+  <h1>Web Bluetooth API Example</h1>
+  <button id="connectBtn">Connect to Bluetooth Device</button>
+  <p id="characteristicValue">Characteristic value will be displayed here</p>
+
+  <script>
+    // Check if the Web Bluetooth API is supported
+    if ('bluetooth' in navigator) {
+      const connectBtn = document.getElementById('connectBtn');
+      const characteristicValue = document.getElementById('characteristicValue');
+
+      // Function to handle successful connection to the device
+      async function handleDeviceConnection(device) {
+        try {
+          // Connect to the GATT server of the device
+          const server = await device.gatt.connect();
+
+          // Get the primary service of the device (replace 'serviceUuid' with the actual UUID of the service)
+          const service = await server.getPrimaryService('serviceUuid');
+
+          // Get the characteristic of the service (replace 'characteristicUuid' with the actual UUID of the characteristic)
+          const characteristic = await service.getCharacteristic('characteristicUuid');
+
+          // Read the value of the characteristic
+          const value = await characteristic.readValue();
+
+          // Display the characteristic value on the page
+          characteristicValue.textContent = `Characteristic Value: ${value}`;
+        } catch (error) {
+          console.error('Error connecting to Bluetooth device:', error);
+        }
+      }
+
+      // Function to handle errors
+      function handleError(error) {
+        console.error('Error requesting Bluetooth device:', error);
+      }
+
+      // Attach click event to the "Connect to Bluetooth Device" button
+      connectBtn.addEventListener('click', async () => {
+        try {
+          // Request a Bluetooth device (replace 'options' with specific filters for device selection, if needed)
+          const device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true });
+
+          // Handle the device connection
+          await handleDeviceConnection(device);
+        } catch (error) {
+          handleError(error);
+        }
+      });
+    } else {
+      console.log('Web Bluetooth API is not supported in this browser.');
+    }
+  </script>
+</body>
+</html>
+
+18) how to use Web USB api ?
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Web USB API Example</title>
+</head>
+<body>
+  <h1>Web USB API Example</h1>
+  <button id="connectBtn">Connect to USB Device</button>
+  <p id="usbData">USB data will be displayed here</p>
+
+  <script>
+    // Check if the Web USB API is supported
+    if ('usb' in navigator) {
+      const connectBtn = document.getElementById('connectBtn');
+      const usbData = document.getElementById('usbData');
+
+      // Function to handle successful connection to the USB device
+      async function handleDeviceConnection(device) {
+        try {
+          // Open a connection to the USB device
+          await device.open();
+
+          // Select a configuration (assuming the device has only one configuration)
+          await device.selectConfiguration(1);
+
+          // Claim an interface (assuming the device has only one interface)
+          await device.claimInterface(0);
+
+          // In this example, we read data from an endpoint (assuming the device has an IN endpoint)
+          const endpointIn = 1;
+          const result = await device.transferIn(endpointIn, 64); // Read 64 bytes of data
+
+          // Convert the received data to a string for display
+          const data = new TextDecoder().decode(result.data);
+
+          // Display the USB data on the page
+          usbData.textContent = `Received Data: ${data}`;
+        } catch (error) {
+          console.error('Error connecting to USB device:', error);
+        }
+      }
+
+      // Function to handle errors
+      function handleError(error) {
+        console.error('Error requesting USB device:', error);
+      }
+
+      // Attach click event to the "Connect to USB Device" button
+      connectBtn.addEventListener('click', async () => {
+        try {
+          // Request a USB device (replace 'filters' with specific filters for device selection, if needed)
+          const device = await navigator.usb.requestDevice({ filters: [] });
+
+          // Handle the device connection
+          await handleDeviceConnection(device);
+        } catch (error) {
+          handleError(error);
+        }
+      });
+    } else {
+      console.log('Web USB API is not supported in this browser.');
+    }
+  </script>
+</body>
+</html>
+
+19) how to use Web NFC api ?
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Web NFC API Example</title>
+</head>
+<body>
+  <h1>Web NFC API Example</h1>
+  <button id="readNfcBtn">Read NFC Tag</button>
+  <p id="nfcData">NFC data will be displayed here</p>
+
+  <script>
+    // Check if the Web NFC API is supported
+    if ('nfc' in navigator) {
+      const readNfcBtn = document.getElementById('readNfcBtn');
+      const nfcData = document.getElementById('nfcData');
+
+      // Function to handle successful NFC reading
+      async function handleNfcReading(event) {
+        try {
+          // Retrieve the NFC tag data from the event object
+          const ndef = event.message.records.map(record => record.data.text());
+
+          // Display the NFC tag data on the page
+          nfcData.textContent = `NFC Data: ${ndef}`;
+        } catch (error) {
+          console.error('Error reading NFC tag:', error);
+        }
+      }
+
+      // Function to handle errors
+      function handleError(error) {
+        console.error('Error reading NFC tag:', error);
+      }
+
+      // Attach click event to the "Read NFC Tag" button
+      readNfcBtn.addEventListener('click', async () => {
+        try {
+          // Request NFC reader access
+          await navigator.nfc.read();
+
+          // Listen for NFC reading event
+          navigator.nfc.onreading = handleNfcReading;
+
+          // Notify user to bring the NFC tag close to the device
+          alert('Bring the NFC tag close to the device.');
+        } catch (error) {
+          handleError(error);
+        }
+      });
+    } else {
+      console.log('Web NFC API is not supported in this browser.');
+    }
+  </script>
+</body>
+</html>
+
+20) how to use Vibration API ?
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Vibration API Example</title>
+</head>
+<body>
+  <h1>Vibration API Example</h1>
+  <button id="vibrateBtn">Vibrate Device</button>
+
+  <script>
+    // Check if the Vibration API is supported
+    if ('vibrate' in navigator) {
+      const vibrateBtn = document.getElementById('vibrateBtn');
+
+      // Function to handle the vibration
+      function vibrateDevice() {
+        // Vibrate the device for 1000 milliseconds (1 second)
+        navigator.vibrate(1000);
+      }
+
+      // Attach click event to the "Vibrate Device" button
+      vibrateBtn.addEventListener('click', () => {
+        vibrateDevice();
+      });
+    } else {
+      console.log('Vibration API is not supported in this browser.');
+    }
+  </script>
+</body>
+</html>
+
+21) how to use Web Audio API ?
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Web Audio API Example</title>
+</head>
+<body>
+  <h1>Web Audio API Example</h1>
+  <button id="playBtn">Play Audio</button>
+
+  <script>
+    // Function to initialize the Web Audio API and play audio
+    function playAudio() {
+      // Create an AudioContext
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+      // Load the audio file (replace 'audio-file.mp3' with the actual path to your audio file)
+      fetch('audio-file.mp3')
+        .then(response => response.arrayBuffer())
+        .then(audioData => audioContext.decodeAudioData(audioData))
+        .then(decodedAudioData => {
+          // Create an AudioBufferSourceNode to play the audio
+          const audioSource = audioContext.createBufferSource();
+          audioSource.buffer = decodedAudioData;
+
+          // Connect the audio source to the audio context's destination (i.e., speakers)
+          audioSource.connect(audioContext.destination);
+
+          // Play the audio
+          audioSource.start();
+        })
+        .catch(error => console.error('Error loading or playing audio:', error));
+    }
+
+    // Attach click event to the "Play Audio" button
+    const playBtn = document.getElementById('playBtn');
+    playBtn.addEventListener('click', () => {
+      playAudio();
+    });
+  </script>
+</body>
+</html>
+
+22) how to use Web Speech API ?
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Web Speech API Example</title>
+</head>
+<body>
+  <h1>Web Speech API Example</h1>
+  <div>
+    <button id="speakBtn">Speak</button>
+    <button id="listenBtn">Listen</button>
+  </div>
+  <div>
+    <p id="outputText">Output text will be displayed here</p>
+  </div>
+
+  <script>
+    // Check if the Web Speech API is supported
+    if ('SpeechSynthesisUtterance' in window && 'SpeechRecognition' in window) {
+      const speakBtn = document.getElementById('speakBtn');
+      const listenBtn = document.getElementById('listenBtn');
+      const outputText = document.getElementById('outputText');
+
+      // Function to handle speech synthesis (text-to-speech)
+      function speak(text) {
+        const utterance = new SpeechSynthesisUtterance(text);
+        speechSynthesis.speak(utterance);
+      }
+
+      // Function to handle speech recognition (speech-to-text)
+      function listen() {
+        const recognition = new SpeechRecognition();
+
+        recognition.onresult = event => {
+          const result = event.results[0][0].transcript;
+          outputText.textContent = `You said: ${result}`;
+        };
+
+        recognition.onerror = event => {
+          console.error('Speech recognition error:', event.error);
+        };
+
+        recognition.start();
+      }
+
+      // Attach click events to the buttons
+      speakBtn.addEventListener('click', () => {
+        const textToSpeak = 'Hello, welcome to the Web Speech API example!';
+        speak(textToSpeak);
+      });
+
+      listenBtn.addEventListener('click', () => {
+        listen();
+      });
+    } else {
+      console.log('Web Speech API is not supported in this browser.');
+    }
+  </script>
+</body>
+</html>
+
+23) how to use Web Notifications API ?
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Web Notifications API Example</title>
+</head>
+<body>
+  <h1>Web Notifications API Example</h1>
+  <button id="notifyBtn">Notify Me</button>
+
+  <script>
+    // Check if the Web Notifications API is supported
+    if ('Notification' in window) {
+      const notifyBtn = document.getElementById('notifyBtn');
+
+      // Function to display a notification
+      function showNotification() {
+        // Request permission to show notifications
+        Notification.requestPermission().then(permission => {
+          if (permission === 'granted') {
+            // Create a new notification
+            const notification = new Notification('Hello from Web Notifications API!', {
+              body: 'This is a notification example.',
+              icon: 'notification-icon.png' // Replace with the path to your notification icon
+            });
+
+            // Handle notification click event
+            notification.onclick = () => {
+              alert('Notification clicked!');
+            };
+
+            // Handle notification show event
+            notification.onshow = () => {
+              console.log('Notification shown!');
+            };
+
+            // Handle notification close event
+            notification.onclose = () => {
+              console.log('Notification closed!');
+            };
+          }
+        });
+      }
+
+      // Attach click event to the "Notify Me" button
+      notifyBtn.addEventListener('click', () => {
+        showNotification();
+      });
+    } else {
+      console.log('Web Notifications API is not supported in this browser.');
+    }
+  </script>
+</body>
+</html>
